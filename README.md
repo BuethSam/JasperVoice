@@ -8,7 +8,7 @@ Local push-to-talk voice dictation for Windows. Hold a hotkey, speak, release �
 - **Toggle mode** — press once to start, again to stop (alternative to hold-to-talk)
 - **Local Whisper transcription** via `faster-whisper` (offline, private)
 - **GPU acceleration** — CUDA support in both the dev run and the standalone build
-- **Universal text injection** — works in any app that accepts Ctrl+V
+- **Universal text injection** — works in any app that accepts Ctrl+V; optional clipboard-free Unicode typing is also available
 - **Animated overlay** — a floating pill with a live audio spectrum while you speak
 - **Transcription history & statistics** — words, audio time, average WPM
 - **Developer dictionary** — offline phrase corrections for technical terms
@@ -123,6 +123,7 @@ Edit `%APPDATA%/JasperVoice/config.json`:
   "compute_type": "int8",
   "device": "auto",
   "sample_rate": 16000,
+  "injection_mode": "paste",
   "paste_delay_ms": 15,
   "min_recording_ms": 200
 }
@@ -254,7 +255,7 @@ fine for push-to-talk. For light local testing, use `"device": "cpu"` and
 
 ## Known limitations
 
-- **Clipboard is overwritten** on every transcription. If you had something copied, it's gone. Restore is a planned v1.1 feature.
+- **Clipboard is overwritten** on every transcription when using Paste mode. If you had something copied, it's gone. Use Type mode to preserve the clipboard; note that simulated Unicode typing may not work in every app.
 - **Global hotkey may require admin** on first run (Windows low-level keyboard hook). If PTT does not register, run from an elevated terminal.
 - **Antivirus warnings** about the `keyboard` library are false positives — it's open-source and does not exfiltrate.
 - **Single instance**: a named mutex prevents a second copy from running (a second launch shows a tray notice and exits). Use the tray "Quit" to close.
@@ -265,7 +266,7 @@ fine for push-to-talk. For light local testing, use `"device": "cpu"` and
 config.py          JSON config at %APPDATA%/JasperVoice/ (validated, atomic writes)
 audio.py           sounddevice InputStream → numpy array; 7-band FFT for the overlay
 transcription.py   faster-whisper with CUDA/CPU auto-fallback
-injection.py       clipboard + SendInput Ctrl+V
+injection.py       clipboard + SendInput Ctrl+V; optional clipboard-free Unicode typing
 hotkey.py          push-to-talk / toggle state machine on top of `keyboard` lib
 history.py         thread-safe transcription history (JSON, capped at 200)
 postprocessing.py  optional OpenCode/OpenAI-compatible text polish

@@ -239,6 +239,12 @@ def test_paste_delay_and_min_recording_in_config(window):
     assert received[0]["min_recording_ms"] == 350
 
 
+def test_injection_mode_in_collect_values(window):
+    page = window.page("general")
+    page.injection_mode.set_current_key("type")
+    assert window._collect_values()["injection_mode"] == "type"
+
+
 def test_hotkey_mode_in_collect_values(window):
     window.mode_seg.set_current_key("toggle")
     collected = window._collect_values()

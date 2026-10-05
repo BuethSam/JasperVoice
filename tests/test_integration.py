@@ -273,6 +273,39 @@ def test_paste_delay_ms_reaches_inject_text(qt_app, tmp_path, monkeypatch):
     assert _text == "hello world"
 
 
+def test_injection_mode_reaches_inject_text(qt_app, tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setattr("jaspervoice.config.load_config", lambda: {
+        "hotkey": "ctrl+shift+space", "language": "en", "model_size": "tiny",
+        "compute_type": "int8", "device": "cpu", "sample_rate": 16000,
+        "paste_delay_ms": 15, "min_recording_ms": 200, "injection_mode": "type",
+    })
+    captured = []
+    monkeypatch.setattr(
+        "jaspervoice.app.injection.inject_text",
+        lambda text, settle_ms=30, mode="paste": captured.append((text, mode)) or True,
+    )
+    from jaspervoice.transcription import TranscriptionResult
+    monkeypatch.setattr(
+        "jaspervoice.app.Transcriber.transcribe",
+        lambda self, audio, sample_rate=16000: TranscriptionResult(
+            text="typed words", language="en", duration=0.5
+        ),
+    )
+    a = App()
+    a.setup()
+    fake_audio = np.zeros(8000, dtype=np.float32)
+    monkeypatch.setattr(a._recorder, "start", lambda: None)
+    monkeypatch.setattr(a._recorder, "stop", lambda: fake_audio)
+    a._on_press()
+    a._on_release()
+    deadline = time.monotonic() + 20.0
+    while a._busy and time.monotonic() < deadline:
+        qt_app.processEvents(QEventLoop.AllEvents, 100)
+    a._shutdown()
+    assert captured[0] == ("typed words", "type")
+
+
 def test_noise_gate_runs_in_worker_when_enabled(qt_app, tmp_path, monkeypatch):
     """When noise_gate_enabled, the worker must pass audio through apply_noise_gate
     before transcribe(). We assert the gate is invoked on the take's audio."""

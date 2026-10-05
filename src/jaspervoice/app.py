@@ -66,6 +66,7 @@ class TranscriptionWorker(QObject):
         self,
         transcriber: Transcriber,
         paste_delay_ms: int = 30,
+        injection_mode: str = "paste",
         postprocessor: Optional[PostProcessor] = None,
         output_mode: str = "raw",
         post_processing_enabled: bool = False,
@@ -76,6 +77,7 @@ class TranscriptionWorker(QObject):
         super().__init__()
         self._transcriber = transcriber
         self._paste_delay_ms = paste_delay_ms
+        self._injection_mode = injection_mode
         self._postprocessor: PostProcessor = postprocessor or NoopPostProcessor()
         self._output_mode = output_mode
         self._post_processing_enabled = post_processing_enabled
@@ -160,7 +162,14 @@ class TranscriptionWorker(QObject):
                         log.warning("Post-processing unexpected error: %s. Falling back to dictionary text.", e)
 
                 if inject:
-                    injection.inject_text(final_text, settle_ms=self._paste_delay_ms)
+                    if self._injection_mode == "type":
+                        injection.inject_text(
+                            final_text,
+                            settle_ms=self._paste_delay_ms,
+                            mode="type",
+                        )
+                    else:
+                        injection.inject_text(final_text, settle_ms=self._paste_delay_ms)
                     self.finished.emit(final_text)
                 else:
                     self.test_result.emit(final_text)
@@ -483,6 +492,7 @@ class App(QObject):
         self._worker = TranscriptionWorker(
             self._transcriber,
             paste_delay_ms=int(self._cfg.get("paste_delay_ms", 15)),
+            injection_mode=str(self._cfg.get("injection_mode", "paste")),
             postprocessor=self._build_postprocessor(self._cfg),
             output_mode=self._cfg.get("output_mode", "raw"),
             post_processing_enabled=bool(self._cfg.get("post_processing_enabled", False)),
@@ -642,6 +652,7 @@ class App(QObject):
         # Update paste delay on the worker (cheap)
         if self._worker is not None:
             self._worker._paste_delay_ms = int(new_cfg.get("paste_delay_ms", 15))
+            self._worker._injection_mode = str(new_cfg.get("injection_mode", "paste"))
             self._worker._dictionary = DeveloperDictionary(new_cfg.get("dictionary", []))
 
         # Update post-processing settings on the worker

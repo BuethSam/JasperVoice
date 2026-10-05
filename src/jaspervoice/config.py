@@ -26,6 +26,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "compute_type": "int8",
     "device": "auto",
     "sample_rate": 16000,
+    "injection_mode": "paste",
     "paste_delay_ms": 15,
     "min_recording_ms": 200,
     "output_mode": "raw",
@@ -57,6 +58,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 VALID_PROVIDERS = {"none", "opencode"}
 
 VALID_HOTKEY_MODES = {"push_to_talk", "toggle"}
+VALID_INJECTION_MODES = {"paste", "type"}
 
 VALID_OVERLAY_POSITIONS = {"top_left", "top_right", "bottom_left", "bottom_right"}
 VALID_SOUND_FEEDBACK = {"off", "subtle", "all"}
@@ -116,6 +118,9 @@ def _coerce(cfg: dict[str, Any]) -> dict[str, Any]:
         out["hotkey_mode"] = "push_to_talk"
     if not isinstance(out["language"], str) or not out["language"].strip():
         out["language"] = DEFAULT_CONFIG["language"]
+    if out.get("injection_mode") not in VALID_INJECTION_MODES:
+        log.warning("Invalid injection_mode %r, falling back to 'paste'", out.get("injection_mode"))
+        out["injection_mode"] = DEFAULT_CONFIG["injection_mode"]
     if not isinstance(out.get("paste_delay_ms"), int) or not (0 <= out["paste_delay_ms"] <= 200):
         log.warning("Invalid paste_delay_ms %r, falling back to %d", out.get("paste_delay_ms"), DEFAULT_CONFIG["paste_delay_ms"])
         out["paste_delay_ms"] = DEFAULT_CONFIG["paste_delay_ms"]

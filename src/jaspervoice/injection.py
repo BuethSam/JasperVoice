@@ -1,4 +1,4 @@
-"""Inject text into the focused window via clipboard + SendInput Ctrl+V.
+"""Inject text into the focused window by pasting or Unicode typing.
 
 The INPUT struct must match the exact layout that the Windows API expects:
   - 32-bit: sizeof(INPUT) == 28
@@ -27,6 +27,7 @@ USER32 = ctypes.WinDLL("user32", use_last_error=True)
 VK_CONTROL = 0x11
 VK_V = 0x56
 KEYEVENTF_KEYUP = 0x0002
+KEYEVENTF_UNICODE = 0x0004
 INPUT_KEYBOARD = 1
 
 if sys.platform == "win32":
@@ -116,6 +117,28 @@ def _send_paste_win32() -> bool:
     return sent == n_inputs
 
 
+def _send_text_win32(text: str) -> bool:
+    """Type Unicode text with SendInput without reading or writing the clipboard."""
+    if sys.platform != "win32" or INPUT is None or USER32 is None:
+        return False
+    units = text.encode("utf-16-le")
+    code_units = [int.from_bytes(units[i:i + 2], "little") for i in range(0, len(units), 2)]
+    arr = (INPUT * (len(code_units) * 2))()
+    for i, unit in enumerate(code_units):
+        down = arr[i * 2]
+        down.type = INPUT_KEYBOARD
+        down.u.ki.wScan = unit
+        down.u.ki.dwFlags = KEYEVENTF_UNICODE
+        up = arr[i * 2 + 1]
+        up.type = INPUT_KEYBOARD
+        up.u.ki.wScan = unit
+        up.u.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
+    sent = USER32.SendInput(len(arr), arr, ctypes.sizeof(INPUT))
+    if sent != len(arr):
+        log.warning("SendInput delivered %d/%d Unicode events", sent, len(arr))
+    return sent == len(arr)
+
+
 def _has_focused_window() -> bool:
     if not sys.platform == "win32":
         return False
@@ -123,13 +146,18 @@ def _has_focused_window() -> bool:
     return bool(hwnd)
 
 
-def inject_text(text: str, settle_ms: int = 30) -> bool:
-    """Write `text` to the clipboard and trigger Ctrl+V on the focused window.
+def inject_text(text: str, settle_ms: int = 30, mode: str = "paste") -> bool:
+    """Insert text into the focused window using the configured mode.
 
     Returns True if the keypress was sent. Empty text is a no-op.
     """
     if text is None or text == "":
         return False
+    if mode == "type":
+        if not _has_focused_window():
+            log.debug("No focused window; typing skipped")
+            return False
+        return _send_text_win32(text)
     pyperclip.copy(text)
     if settle_ms > 0:
         time.sleep(settle_ms / 1000.0)

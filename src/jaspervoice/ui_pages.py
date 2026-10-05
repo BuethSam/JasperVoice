@@ -937,6 +937,10 @@ class GeneralPage(BasePage):
         g.add_row("Position", self.overlay_pos)
 
         g = self.add_group("INJECTION")
+        self.injection_mode = SegmentedControl([("paste", "Paste"), ("type", "Type")])
+        self.injection_mode.changed.connect(lambda _k: dirty())
+        g.add_row("Text insertion", self.injection_mode,
+                  "Paste is fastest. Type preserves your clipboard contents.")
         self.paste_delay = QSpinBox()
         self.paste_delay.setRange(0, 200)
         self.paste_delay.setSuffix(" ms")
@@ -966,6 +970,7 @@ class GeneralPage(BasePage):
         self.start_minimized.setChecked(bool(cfg.get("start_minimized", True)))
         self.show_overlay.setChecked(bool(cfg.get("show_overlay", True)))
         self.overlay_pos.set_current_key(str(cfg.get("overlay_position", "bottom_right")))
+        self.injection_mode.set_current_key(str(cfg.get("injection_mode", "paste")))
         self.paste_delay.setValue(int(cfg.get("paste_delay_ms", 15)))
         self.min_duration.setValue(int(cfg.get("min_recording_ms", 200)))
 
@@ -978,6 +983,7 @@ class GeneralPage(BasePage):
         cfg["start_minimized"] = self.start_minimized.isChecked()
         cfg["show_overlay"] = self.show_overlay.isChecked()
         cfg["overlay_position"] = self.overlay_pos.current_key()
+        cfg["injection_mode"] = self.injection_mode.current_key()
         cfg["paste_delay_ms"] = int(self.paste_delay.value())
         cfg["min_recording_ms"] = int(self.min_duration.value())
 
