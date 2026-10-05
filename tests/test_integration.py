@@ -126,6 +126,27 @@ def test_overlay_mirrors_state_changes(qt_app, tmp_path, monkeypatch):
         a._shutdown()
 
 
+def test_release_switches_to_processing_before_worker_runs(qt_app, tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setattr("jaspervoice.config.load_config", lambda: {
+        "hotkey": "ctrl+shift+space", "language": "en", "model_size": "tiny",
+        "compute_type": "int8", "device": "cpu", "sample_rate": 16000,
+        "min_recording_ms": 200, "warmup_on_launch": False,
+    })
+    a = App()
+    a.setup()
+    try:
+        fake_audio = np.zeros(8000, dtype=np.float32)
+        monkeypatch.setattr(a._recorder, "start", lambda: None)
+        monkeypatch.setattr(a._recorder, "stop", lambda: fake_audio)
+        monkeypatch.setattr(a._worker, "submit", lambda *args, **kwargs: None)
+        a._on_press()
+        a._on_release()
+        assert a._last_state == "processing"
+    finally:
+        a._shutdown()
+
+
 def test_tray_settings_requested_opens_settings(qt_app, tmp_path, monkeypatch):
     """The tray's Settings... menu item must trigger settings.show()."""
     monkeypatch.setenv("APPDATA", str(tmp_path))

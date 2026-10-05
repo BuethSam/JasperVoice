@@ -111,12 +111,13 @@ class TranscriptionWorker(QObject):
             return self._pending
 
     def run(self) -> None:
-        # Warm up the Whisper model as the worker thread's first action, before
-        # blocking on the task queue. This loads the model right after startup
-        # so the first dictation doesn't pay the ~2-5s model-load cost.
+        # Give an immediately queued take priority over startup warmup. Model
+        # loading is synchronous, so warming first can otherwise strand a take
+        # behind a long model download/load while the UI appears stuck.
         with self._cv:
             already_stopped = self._stop
-        if not already_stopped and self._warmup:
+            has_pending = self._pending is not None
+        if not already_stopped and self._warmup and not has_pending:
             try:
                 self._transcriber._ensure_loaded()
                 log.info(
@@ -302,6 +303,7 @@ class App(QObject):
             return
         self._last_duration_s = duration
         if self._worker is not None:
+            self._set_state("processing")
             self._worker.submit(audio, int(self._cfg["sample_rate"]))
 
     def _on_cancel(self) -> None:
