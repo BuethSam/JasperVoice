@@ -245,6 +245,16 @@ def test_injection_mode_in_collect_values(window):
     assert window._collect_values()["injection_mode"] == "type"
 
 
+def test_paste_delay_disabled_in_type_mode(window):
+    page = window.page("general")
+    page.injection_mode.set_current_key("type")
+    page._update_paste_delay_enabled()
+    assert not page.paste_delay.isEnabled()
+    page.injection_mode.set_current_key("paste")
+    page._update_paste_delay_enabled()
+    assert page.paste_delay.isEnabled()
+
+
 def test_hotkey_mode_in_collect_values(window):
     window.mode_seg.set_current_key("toggle")
     collected = window._collect_values()

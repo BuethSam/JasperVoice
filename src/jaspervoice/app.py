@@ -162,14 +162,20 @@ class TranscriptionWorker(QObject):
                         log.warning("Post-processing unexpected error: %s. Falling back to dictionary text.", e)
 
                 if inject:
-                    if self._injection_mode == "type":
-                        injection.inject_text(
-                            final_text,
-                            settle_ms=self._paste_delay_ms,
-                            mode="type",
+                    sent = injection.inject_text(
+                        final_text,
+                        settle_ms=self._paste_delay_ms,
+                        mode=self._injection_mode,
+                    )
+                    if not sent and self._injection_mode == "type":
+                        # Unlike paste mode, the text is not on the clipboard,
+                        # so a silent failure would lose it entirely.
+                        log.warning("Typing failed; transcription was not inserted")
+                        self.failed.emit(
+                            "Could not type into the focused window "
+                            "(it may be running as administrator)"
                         )
-                    else:
-                        injection.inject_text(final_text, settle_ms=self._paste_delay_ms)
+                        continue
                     self.finished.emit(final_text)
                 else:
                     self.test_result.emit(final_text)

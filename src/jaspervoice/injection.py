@@ -28,6 +28,7 @@ VK_CONTROL = 0x11
 VK_V = 0x56
 KEYEVENTF_KEYUP = 0x0002
 KEYEVENTF_UNICODE = 0x0004
+VK_RETURN = 0x0D
 INPUT_KEYBOARD = 1
 
 if sys.platform == "win32":
@@ -119,23 +120,32 @@ def _send_paste_win32() -> bool:
 
 def _send_text_win32(text: str) -> bool:
     """Type Unicode text with SendInput without reading or writing the clipboard."""
-    if sys.platform != "win32" or INPUT is None or USER32 is None:
+    if INPUT is None:
         return False
-    units = text.encode("utf-16-le")
-    code_units = [int.from_bytes(units[i:i + 2], "little") for i in range(0, len(units), 2)]
-    arr = (INPUT * (len(code_units) * 2))()
-    for i, unit in enumerate(code_units):
-        down = arr[i * 2]
-        down.type = INPUT_KEYBOARD
-        down.u.ki.wScan = unit
-        down.u.ki.dwFlags = KEYEVENTF_UNICODE
-        up = arr[i * 2 + 1]
-        up.type = INPUT_KEYBOARD
-        up.u.ki.wScan = unit
-        up.u.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
+    # Line breaks are sent as real Enter key presses: many apps ignore a
+    # Unicode "\n" character event.
+    events: list[tuple[int, int, int]] = []  # (wVk, wScan, dwFlags)
+    for line_no, line in enumerate(text.replace("\r\n", "\n").replace("\r", "\n").split("\n")):
+        if line_no:
+            events.append((VK_RETURN, 0, 0))
+            events.append((VK_RETURN, 0, KEYEVENTF_KEYUP))
+        units = line.encode("utf-16-le")
+        for i in range(0, len(units), 2):
+            unit = int.from_bytes(units[i:i + 2], "little")
+            events.append((0, unit, KEYEVENTF_UNICODE))
+            events.append((0, unit, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP))
+    if not events:
+        return False
+    arr = (INPUT * len(events))()
+    for ev, (vk, scan, flags) in zip(arr, events):
+        ev.type = INPUT_KEYBOARD
+        ev.u.ki.wVk = vk
+        ev.u.ki.wScan = scan
+        ev.u.ki.dwFlags = flags
     sent = USER32.SendInput(len(arr), arr, ctypes.sizeof(INPUT))
     if sent != len(arr):
-        log.warning("SendInput delivered %d/%d Unicode events", sent, len(arr))
+        err = ctypes.get_last_error()
+        log.warning("SendInput delivered %d/%d typing events (last error: %d)", sent, len(arr), err)
     return sent == len(arr)
 
 

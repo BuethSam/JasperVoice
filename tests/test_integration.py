@@ -32,7 +32,7 @@ def test_pipeline_runs_end_to_end(qt_app, tmp_path, monkeypatch):
         "sample_rate": 16000,
     })
     captured = []
-    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30: captured.append(t) or True)
+    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30, mode="paste": captured.append(t) or True)
 
     from jaspervoice.transcription import TranscriptionResult
     monkeypatch.setattr("jaspervoice.app.Transcriber.transcribe", lambda self, audio, sample_rate=16000: TranscriptionResult(text="smoke test", language="en", duration=0.5))
@@ -247,7 +247,7 @@ def test_paste_delay_ms_reaches_inject_text(qt_app, tmp_path, monkeypatch):
         "min_recording_ms": 200,
     })
     captured_invocations = []
-    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30: captured_invocations.append((t, settle_ms)) or True)
+    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30, mode="paste": captured_invocations.append((t, settle_ms)) or True)
 
     from jaspervoice.transcription import TranscriptionResult
     monkeypatch.setattr("jaspervoice.app.Transcriber.transcribe", lambda self, audio, sample_rate=16000: TranscriptionResult(text="hello world", language="en", duration=0.5))
@@ -306,6 +306,60 @@ def test_injection_mode_reaches_inject_text(qt_app, tmp_path, monkeypatch):
     assert captured[0] == ("typed words", "type")
 
 
+def test_failed_typing_reports_error_instead_of_success(qt_app, tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setattr("jaspervoice.config.load_config", lambda: {
+        "hotkey": "ctrl+shift+space", "language": "en", "model_size": "tiny",
+        "compute_type": "int8", "device": "cpu", "sample_rate": 16000,
+        "paste_delay_ms": 15, "min_recording_ms": 200, "injection_mode": "type",
+    })
+    monkeypatch.setattr(
+        "jaspervoice.app.injection.inject_text",
+        lambda text, settle_ms=30, mode="paste": False,
+    )
+    from jaspervoice.transcription import TranscriptionResult
+    monkeypatch.setattr(
+        "jaspervoice.app.Transcriber.transcribe",
+        lambda self, audio, sample_rate=16000: TranscriptionResult(
+            text="lost words", language="en", duration=0.5
+        ),
+    )
+    a = App()
+    a.setup()
+    finished, failed = [], []
+    a._worker.finished.connect(finished.append)
+    a._worker.failed.connect(failed.append)
+    fake_audio = np.zeros(8000, dtype=np.float32)
+    monkeypatch.setattr(a._recorder, "start", lambda: None)
+    monkeypatch.setattr(a._recorder, "stop", lambda: fake_audio)
+    a._on_press()
+    a._on_release()
+    deadline = time.monotonic() + 20.0
+    while a._busy and time.monotonic() < deadline:
+        qt_app.processEvents(QEventLoop.AllEvents, 100)
+    a._shutdown()
+    assert finished == []
+    assert failed and "type" in failed[0].lower()
+
+
+def test_injection_mode_hot_reloads_on_worker(qt_app, tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setattr("jaspervoice.config.load_config", lambda: {
+        "hotkey": "ctrl+shift+space", "language": "en", "model_size": "tiny",
+        "compute_type": "int8", "device": "cpu", "sample_rate": 16000,
+    })
+    a = App()
+    a.setup()
+    try:
+        assert a._worker._injection_mode == "paste"
+        new_cfg = dict(a._cfg)
+        new_cfg["injection_mode"] = "type"
+        a._on_config_changed(new_cfg)
+        assert a._worker._injection_mode == "type"
+    finally:
+        a._shutdown()
+
+
 def test_noise_gate_runs_in_worker_when_enabled(qt_app, tmp_path, monkeypatch):
     """When noise_gate_enabled, the worker must pass audio through apply_noise_gate
     before transcribe(). We assert the gate is invoked on the take's audio."""
@@ -322,7 +376,7 @@ def test_noise_gate_runs_in_worker_when_enabled(qt_app, tmp_path, monkeypatch):
     })
     monkeypatch.setattr(
         "jaspervoice.app.injection.inject_text",
-        lambda t, settle_ms=30: True,
+        lambda t, settle_ms=30, mode="paste": True,
     )
 
     gate_calls = []
@@ -374,7 +428,7 @@ def test_noise_gate_skipped_when_disabled(qt_app, tmp_path, monkeypatch):
     })
     monkeypatch.setattr(
         "jaspervoice.app.injection.inject_text",
-        lambda t, settle_ms=30: True,
+        lambda t, settle_ms=30, mode="paste": True,
     )
 
     gate_calls = []
@@ -507,7 +561,7 @@ def test_postprocessor_injects_final_text(qt_app, tmp_path, monkeypatch):
         "post_processing_provider": "none",
     })
     captured = []
-    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30: captured.append(t) or True)
+    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30, mode="paste": captured.append(t) or True)
 
     from jaspervoice.transcription import TranscriptionResult
     monkeypatch.setattr("jaspervoice.app.Transcriber.transcribe", lambda self, audio, sample_rate=16000: TranscriptionResult(text="hello world", language="en", duration=0.5))
@@ -551,7 +605,7 @@ def test_postprocessor_failure_falls_back_to_raw_text(qt_app, tmp_path, monkeypa
         "post_processing_provider": "none",
     })
     captured = []
-    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30: captured.append(t) or True)
+    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30, mode="paste": captured.append(t) or True)
 
     from jaspervoice.transcription import TranscriptionResult
     monkeypatch.setattr("jaspervoice.app.Transcriber.transcribe", lambda self, audio, sample_rate=16000: TranscriptionResult(text="raw dictation", language="en", duration=0.5))
@@ -598,7 +652,7 @@ def test_fake_postprocessor_injects_final_text(qt_app, tmp_path, monkeypatch):
         "opencode_base_url": "https://fake.example.com",
     })
     captured = []
-    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30: captured.append(t) or True)
+    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30, mode="paste": captured.append(t) or True)
 
     from jaspervoice.transcription import TranscriptionResult
     monkeypatch.setattr("jaspervoice.app.Transcriber.transcribe", lambda self, audio, sample_rate=16000: TranscriptionResult(text="raw dictation", language="en", duration=0.5))
@@ -645,7 +699,7 @@ def test_postprocessor_runtime_error_falls_back_to_raw_text(qt_app, tmp_path, mo
         "opencode_base_url": "https://fake.example.com",
     })
     captured = []
-    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30: captured.append(t) or True)
+    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30, mode="paste": captured.append(t) or True)
 
     from jaspervoice.transcription import TranscriptionResult
     monkeypatch.setattr("jaspervoice.app.Transcriber.transcribe", lambda self, audio, sample_rate=16000: TranscriptionResult(text="raw dictation", language="en", duration=0.5))
@@ -693,7 +747,7 @@ def test_dictionary_applied_before_injection(qt_app, tmp_path, monkeypatch):
         ],
     })
     captured = []
-    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30: captured.append(t) or True)
+    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30, mode="paste": captured.append(t) or True)
 
     from jaspervoice.transcription import TranscriptionResult
     monkeypatch.setattr("jaspervoice.app.Transcriber.transcribe", lambda self, audio, sample_rate=16000: TranscriptionResult(text="use effect with fast api", language="en", duration=0.5))
@@ -741,7 +795,7 @@ def test_dictionary_runs_before_postprocessing(qt_app, tmp_path, monkeypatch):
         ],
     })
     captured = []
-    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30: captured.append(t) or True)
+    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30, mode="paste": captured.append(t) or True)
 
     from jaspervoice.transcription import TranscriptionResult
     monkeypatch.setattr("jaspervoice.app.Transcriber.transcribe", lambda self, audio, sample_rate=16000: TranscriptionResult(text="use effect here", language="en", duration=0.5))
@@ -795,7 +849,7 @@ def test_postprocessor_failure_preserves_dictionary_text(qt_app, tmp_path, monke
         ],
     })
     captured = []
-    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30: captured.append(t) or True)
+    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30, mode="paste": captured.append(t) or True)
 
     from jaspervoice.transcription import TranscriptionResult
     monkeypatch.setattr("jaspervoice.app.Transcriber.transcribe", lambda self, audio, sample_rate=16000: TranscriptionResult(text="use effect", language="en", duration=0.5))
@@ -840,7 +894,7 @@ def test_worker_signal_handlers_run_on_main_thread(qt_app, tmp_path, monkeypatch
         "post_processing_provider": "none",
         "dictionary": [],
     })
-    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30: True)
+    monkeypatch.setattr("jaspervoice.app.injection.inject_text", lambda t, settle_ms=30, mode="paste": True)
 
     from jaspervoice.transcription import TranscriptionResult
     monkeypatch.setattr("jaspervoice.app.Transcriber.transcribe", lambda self, audio, sample_rate=16000: TranscriptionResult(text="smoke", language="en", duration=0.5))
@@ -891,7 +945,7 @@ def test_test_dictation_routes_result_without_injection(qt_app, tmp_path, monkey
     injected = []
     monkeypatch.setattr(
         "jaspervoice.app.injection.inject_text",
-        lambda t, settle_ms=30: injected.append(t) or True,
+        lambda t, settle_ms=30, mode="paste": injected.append(t) or True,
     )
     from jaspervoice.transcription import TranscriptionResult
     monkeypatch.setattr(

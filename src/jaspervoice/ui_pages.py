@@ -939,6 +939,7 @@ class GeneralPage(BasePage):
         g = self.add_group("INJECTION")
         self.injection_mode = SegmentedControl([("paste", "Paste"), ("type", "Type")])
         self.injection_mode.changed.connect(lambda _k: dirty())
+        self.injection_mode.changed.connect(self._update_paste_delay_enabled)
         g.add_row("Text insertion", self.injection_mode,
                   "Paste is fastest. Type preserves your clipboard contents.")
         self.paste_delay = QSpinBox()
@@ -947,7 +948,8 @@ class GeneralPage(BasePage):
         self.paste_delay.setSingleStep(5)
         self.paste_delay.valueChanged.connect(dirty)
         g.add_row("Paste delay", self.paste_delay,
-                  "Pause before pasting. Raise it if text arrives truncated.")
+                  "Pause before pasting. Raise it if text arrives truncated. "
+                  "Only used in Paste mode.")
         self.min_duration = QSpinBox()
         self.min_duration.setRange(50, 2000)
         self.min_duration.setSuffix(" ms")
@@ -957,6 +959,9 @@ class GeneralPage(BasePage):
                   "Recordings shorter than this are discarded (accidental taps).")
 
         self.body.addStretch(1)
+
+    def _update_paste_delay_enabled(self, *_args) -> None:
+        self.paste_delay.setEnabled(self.injection_mode.current_key() == "paste")
 
     def load_from(self, cfg: dict) -> None:
         try:
@@ -971,6 +976,7 @@ class GeneralPage(BasePage):
         self.show_overlay.setChecked(bool(cfg.get("show_overlay", True)))
         self.overlay_pos.set_current_key(str(cfg.get("overlay_position", "bottom_right")))
         self.injection_mode.set_current_key(str(cfg.get("injection_mode", "paste")))
+        self._update_paste_delay_enabled()
         self.paste_delay.setValue(int(cfg.get("paste_delay_ms", 15)))
         self.min_duration.setValue(int(cfg.get("min_recording_ms", 200)))
 
